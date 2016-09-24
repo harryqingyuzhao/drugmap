@@ -1,0 +1,49 @@
+583177  	6	multi
+672657		5	1	*
+673725  	1	1
+673555		1	1
+673501		1	1
+672488		2	multi
+673738		1	1
+605518		4	1	*
+672829		1	1
+673751		1	1
+672968		1	1
+672788		16	1	*
+672789		16	1	*
+588295		6	mul
+589459		6	mul
+583178		6	m
+672412		1	1
+672312		2	1	*
+672864		1	1
+
+'Strength_Code', 'PackSize_Qty', 'Form_Code', 'Manufacturer_Name', 'Drug_Description', 'AltDrug_Description',
+
+
+if 1.txt: SourceSystem_Code == 'Z-dispense':
+	 
+	3.txt: DrugMaster_Code_Keys = get_drugmaster_code_key(3.txt: Universal_Code_Key == 1.txt: Universal_Code ) 
+	initial_mapped_records = get_records_from_table2(2.txt: DrugMaster_Code_Key ==  3.txt: DrugMaster_Code_Keys)
+
+	1.txt: DrugDesc/AltDrugDesc 2.txt:DrugMaster_Name
+	
+	if len(initial_mapped_records) == 1:
+		if 
+
+
+then 2.txt:
+'DrugStrength_Code', 'OverrideDrugStrength_Code', \
+                'PackSize_Qty', 'OverridePackSize_Qty', 'DrugForm_Code', 'OverrideDrugForm_Code', 'Manufacturer_Code'
+
+not conflict, means:
+
+	1.txt:'PackSize_Qty' == 1 or (1.txt:'PackSize_Qty'>1 and 1.txt:'PackSize_Qty'==2.txt:'PackSize_Qty') or (2.txt:'PackSize_Qty' not conflict with 1.txt:'Drug_Description'/1.txt:'AltDrug_Description')
+	and  1.txt:'Strength_Code' not conflict 2.txt:'DrugStrength_Code'  (not_conflict means: a==null or b==null or a==b)
+	and  1.txt:'Strength_Code' not conflict 2.txt:'OverrideDrugStrength_Code'
+	and  1.txt:'Manufacturer_Name' not conflict 2.txt:'Manufacturer_Code'
+	and  1.txt:'Form_Code' not conflict 2.txt:'DrugForm_Code'
+	and  2.txt:'DrugStrength_Code' not conflict 1.txt:'Drug_Description'/1.txt:'AltDrug_Description'
+
+
+
