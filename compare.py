@@ -51,7 +51,7 @@ def guess_packsize_qty_from_description(description):
     else:
         print ('Not found ')
 
-def get_drugform_code_dict(infile="D:\\Data\\DrugForm_Code.txt") :
+def get_drugform_code_dict(infile="C:\\drugmap\\DrugForm_Code.txt") :
     form_code_dict = []
     with open(infile, 'r') as fr:
         for line in fr:
@@ -186,7 +186,7 @@ def get_contents(infile, deliminator='\t'):
 
 def choose_orig_or_guessed_value(orig_value, guessed_value) :
     result = orig_value
-    if (result == 'NULL' or result == '') :
+    if (result == 'NULL' or result == '' or result == '0') :
         if ( (guessed_value != 'NULL') and (guessed_value != '') ) :
             result = guessed_value
     return result
@@ -347,6 +347,7 @@ def extract_number_unit(strength_code_item) :
 
 def transform_unit_number(strength_code_item) :
     number, unit = extract_number_unit(strength_code_item.upper())
+    unit = unit.strip().strip('\t')
     if unit == 'MCG' :
         try :
             number = str(float(number)/1000)
@@ -377,13 +378,36 @@ if test_transform_unit_number :
     print ('test012abc'.upper())
     exit()
 
+def combine_separated_number_unit(strength_code):
+    p = re.compile(r'(\d+(\.\d+)?\s+(MG|mg|G|g|ml|ML|l|L|%|IU|U|MCG|mcg|MU|mu|CM|cm|U|u))')
+    m = p.findall(strength_code)
+    result = strength_code
+    if m :
+        i = 0
+        while (i<len(m)):
+            orig_str_to_replace = m[i][0]
+            dest_str_to_replace = orig_str_to_replace.replace(' ','')
+            result = result.replace(orig_str_to_replace, dest_str_to_replace)
+            i = i + 1
+    return result
+
+# test combine_separated_number_unit
+test_combine_separated_number_unit = 0
+if test_combine_separated_number_unit:
+    print (combine_separated_number_unit("2.5 MCG"))
+    print (combine_separated_number_unit("2.5 MCG/3.5 U"))
+    exit()
+
+
 def strength_code_after_transform(strength_code) :
+    strength_code = combine_separated_number_unit(strength_code)
     ignore_delimitor_strength_code_set = ignore_delimitor_set(strength_code)
 
     only_keep_numbers = []
     for item in set(ignore_delimitor_strength_code_set) :
         number, unit = transform_unit_number(item)
         only_keep_numbers.append( number )
+
     return set(only_keep_numbers)-set([''])
 
 def set_value_relationship(set1, set2) :
@@ -421,6 +445,7 @@ def map_record_rule1_strict(record1, record2, debug='FALSE') :
     record1_Strength_Code = choose_orig_or_guessed_value (record1['Strength_Code'], record1['Guess_Strength_Code'])
     record1_PackSize_Qty = choose_orig_or_guessed_value (record1['PackSize_Qty'], record1['Guess_PackSize_Qty'])
     record1_Form_Code = choose_orig_or_guessed_value (record1['Form_Code'], record1['Guess_Form_Code'])
+    record2_Strength_Code = choose_orig_or_guessed_value (record2['DrugStrength_Code'], record2['OverrideDrugStrength_Code'])
 
     if ( debug == 'DEBUG-VERY-DETAIL' ) :
         print ("record1['Strength_Code']: ", record1['Strength_Code'], "   ", "record1['Guess_Strength_Code']: ", record1['Guess_Strength_Code'], "   choosed record1_Strength_Code : ", record1_Strength_Code)
@@ -435,19 +460,18 @@ def map_record_rule1_strict(record1, record2, debug='FALSE') :
     strength_code_compatible_set = ('EQUAL', 'CONTAIN_BWD', 'CONTAIN_FWD')
 
     record1_strength_code_after_transform = strength_code_after_transform(record1_Strength_Code)
-    record2_strength_code_after_transform = strength_code_after_transform(record2['DrugStrength_Code'])
-    record2_override_strength_code_after_transform = strength_code_after_transform(record2['OverrideDrugStrength_Code'])
+    record2_strength_code_after_transform = strength_code_after_transform(record2_Strength_Code)
+#   record2_override_strength_code_after_transform = strength_code_after_transform(record2_override_strength_code)
 
     if ( debug == 'DEBUG-VERY-DETAIL' ) :
         print ("record1_strength_code_after_transform: ", record1_strength_code_after_transform)
         print ("record2_strength_code_after_transform: ", record2_strength_code_after_transform)
-        print ("record2_override_strength_code_after_transform: ", record2_override_strength_code_after_transform)
+#        print ("record2_override_strength_code_after_transform: ", record2_override_strength_code_after_transform)
         print ("set_value_relationship(record1_strength_code_after_transform, record2_strength_code_after_transform) : ", set_value_relationship(record1_strength_code_after_transform, record2_strength_code_after_transform))
-        print ("set_value_relationship(record1_strength_code_after_transform, record2_override_strength_code_after_transform) : ", set_value_relationship(record1_strength_code_after_transform, record2_override_strength_code_after_transform))
+#        print ("set_value_relationship(record1_strength_code_after_transform, record2_override_strength_code_after_transform) : ", set_value_relationship(record1_strength_code_after_transform, record2_override_strength_code_after_transform))
         print ("value_all_null(record1_Strength_Code, record2['DrugStrength_Code'], record2['OverrideDrugStrength_Code']) : ", value_all_null(record1_Strength_Code, record2['DrugStrength_Code'], record2['OverrideDrugStrength_Code']))
 
     if not ( set_value_relationship(record1_strength_code_after_transform, record2_strength_code_after_transform) in strength_code_compatible_set \
-            or set_value_relationship(record1_strength_code_after_transform, record2_override_strength_code_after_transform) in strength_code_compatible_set \
             or value_all_null(record1_Strength_Code, record2['DrugStrength_Code'], record2['OverrideDrugStrength_Code']) == 'ALL_NULL'  ) :
         return 'FAIL', 'DrugStrength_Code NOT MATCH'
 
@@ -489,24 +513,32 @@ def find_match_records_rule1_strict(table1, table2, rulename) :
 
         matchresult.append(matcheditems)
 
-        if ( record1['Manufacturer_Name'] == 'NULL') and (len(matcheditems['table2records']) > 1) :
-            print ("Clear map records because Manufacturer_Name is NULL and there are multiple matches")
+        #if ( record1['Manufacturer_Name'] == 'NULL') and (len(matcheditems['table2records']) > 1) :
+        #    print ("Clear map records because Manufacturer_Name is NULL and there are multiple matches")
+        #    print ("----------------------------------------------------------")
+        #    print ("DrugMaster_ID:", record1['DrugMaster_ID'], "   Matched ", len(matcheditems['table2records']), " records")
+        #    for tmprec2 in matcheditems['table2records'] :
+        #        print ("DrugMaster_Code_Key:", tmprec2['DrugMaster_Code_Key'])
+        #    print ("----------------------------------------------------------")
+            # if Manu name is empty, only keep 1:1 map record. Clear the map records if more than 1 maps.
+        #    matcheditems['table2records'] = []
+
+        if ( record1['SourceSystem_Code'] == 'ZDISPENSE') and (record1['Universal_Code'] != 'NULL') :
+            print ("Clear map records because it's already matched in zdispense")
             print ("----------------------------------------------------------")
             print ("DrugMaster_ID:", record1['DrugMaster_ID'], "   Matched ", len(matcheditems['table2records']), " records")
             for tmprec2 in matcheditems['table2records'] :
                 print ("DrugMaster_Code_Key:", tmprec2['DrugMaster_Code_Key'])
             print ("----------------------------------------------------------")
-            # if Manu name is empty, only keep 1:1 map record. Clear the map records if more than 1 maps.
             matcheditems['table2records'] = []
 
-        if ( record1['PackSize_Qty'] == '1') and (len(matcheditems['table2records']) > 1) :
-            print ("Clear map records because PackSize_Qty=1 and there are multiple matches")
+        if (record1['Strength_Code'] == 'NULL') and (record1['Guess_Strength_Code'] == '') and (record1['PackSize_Qty'] == 'NULL') and (record1['Guess_PackSize_Qty'] == '') and (record1['Form_Code'] == 'NULL') and (record1['Guess_Form_Code'] == '') and (record1['Manufacturer_Name'] == 'NULL') :
+            print ("Clear map records because Strength_Code, PackSize_Qty, Form_Code, Manufacturer_Name and all guess codes are null")
             print ("----------------------------------------------------------")
             print ("DrugMaster_ID:", record1['DrugMaster_ID'], "   Matched ", len(matcheditems['table2records']), " records")
             for tmprec2 in matcheditems['table2records'] :
                 print ("DrugMaster_Code_Key:", tmprec2['DrugMaster_Code_Key'])
             print ("----------------------------------------------------------")
-            # if table1 packsize is 1, only keep 1:1 map record. Clear the map records if more than 1 maps.
             matcheditems['table2records'] = []
 
     return matchresult
@@ -770,9 +802,26 @@ if test_tabular_print :
     exit()
 #end of test tabular_print
 
+map_fields_groups = [ \
+            {'groupname' : 'Group 1: Drug Description', \
+            'map_fields' : [ ['Drug_Description', 'DrugMaster_Name'],  ['AltDrug_Description', 'OverrideDrugMaster_Name'] ]  } , \
+            {'groupname' : 'Group 2: Strength Code', \
+            'map_fields' : [ ['Strength_Code', 'DrugStrength_Code'],  ['Guess_Strength_Code', 'OverrideDrugStrength_Code'] ]  } , \
+            {'groupname' : 'Group 3: Packsize Qty', \
+            'map_fields' : [ ['PackSize_Qty', 'PackSize_Qty'],  ['Guess_PackSize_Qty', 'OverridePackSize_Qty'] ]  } , \
+            {'groupname' : 'Group 4: Form Code', \
+            'map_fields' : [ ['Form_Code', 'DrugForm_Code'],  ['Guess_Form_Code', 'OverrideDrugForm_Code'] ]  } , \
+            {'groupname' : 'Group 5: Manufacturer Name', \
+            'map_fields' : [ ['Manufacturer_Name', 'Manufacturer_Code'] ]  } , \
+            {'groupname' : 'Group 6: ProductExtension_Code', \
+            'map_fields' : [ ['Drug_Description', 'ProductExtension_Code'] ]  } , \
+            {'groupname' : 'Group 7: For Copy Paste', \
+            'map_fields' : [ ['DrugMaster_ID', 'DrugMaster_Code_Key'] ]  } \
+            ]
+
 def debug_map_record1_rule1_strict_by_id_supper_slow(rec1_drugmaster_id, rec2_drugmaster_code_key) :
-    table_orig = get_contents("d:\\data\\1.txt")
-    table_select = get_contents("d:\\data\\2.txt")
+    table_orig = get_contents("C:\\drugmap\\DrugMaster.txt")
+    table_select = get_contents("C:\\drugmap\\DimDrugMaster.txt")
     table1 = []
     for rec1 in table_orig :
         if rec1['DrugMaster_ID'] == rec1_drugmaster_id :
@@ -802,6 +851,8 @@ def debug_map_record1_rule1_strict_by_id_supper_slow(rec1_drugmaster_id, rec2_dr
     transformed_record1 = get_guess_transform_record(record1)
     result,message = map_record_rule1_strict(transformed_record1, record2, "DEBUG-VERY-DETAIL")
     print (result, message)
+    if (result == 'FAIL') :
+        format_print_two_records_grouped_key_fields_horizental_layout(record1, record2, map_fields_groups) 
 
 
 def compare_ann_result() :
@@ -842,30 +893,27 @@ def compare_ann_result() :
                     break
 
 
-
-# used to debug two records, very slow, only use to run several records, do NOT run large list!!!!
-debug_map_record1_rule1_strict_by_id_supper_slow('588271','SAXE1')
+#debug one item
+#debug_map_record1_rule1_strict_by_id_supper_slow("588457", "SPIOL1")
+debug_map_record1_rule1_strict_by_id_supper_slow('677801','ABIL7')
 exit()
-
-
-# apply z-dispense rule to do the map, it is about 1 or 2 minutes.
-table_orig = get_contents("d:\\data\\1.txt")
-table_select = get_contents("d:\\data\\2.txt")
-table_third = get_contents("d:\\data\\DimBarcode.txt")
-matchresult = find_match_records_rule2_guess_transform_rule2_zdispense(table_orig, table_select, table_third, 'rule2_with_guess_zdispense')
-format_print_matched_array_ignore_empty_horizental_layout(matchresult, 'print-zdispense')
-
-exit()
-
 
 # apply rule1 to do the map, it is about 30 minutes to run through a 1200 records in table1 with 13000 records in table2
-table_orig = get_contents("d:\\data\\1.txt")
-table_select = get_contents("d:\\data\\2.txt")
+table_orig = get_contents("C:\\drugmap\\DrugMaster.txt")
+table_select = get_contents("C:\\drugmap\\DimDrugMaster.txt")
 matchresult = find_match_records_rule1_guess_transform_rule1_strict(table_orig, table_select, 'rule1_with_guess_packsize1_ignore_formcode')
 format_print_matched_array_ignore_empty_horizental_layout(matchresult, 'not-print-zdispense')
 
 exit()
 
+# apply z-dispense rule to do the map, it is about 1 or 2 minutes.
+table_orig = get_contents("C:\\drugmap\\DrugMaster.txt")
+table_select = get_contents("C:\\drugmap\\DimDrugMaster.txt")
+table_third = get_contents("C:\\drugmap\\DimBarcode.txt")
+matchresult = find_match_records_rule2_guess_transform_rule2_zdispense(table_orig, table_select, table_third, 'rule2_with_guess_zdispense')
+format_print_matched_array_ignore_empty_horizental_layout(matchresult, 'print-zdispense')
+
+exit()
 
 # run through ann result list, if ann's mapped record is not SUCCESS by our script, it gives the information why it fails to map
 compare_ann_result()
@@ -877,8 +925,8 @@ exit()
 
 ###########other old testings, usually not used##############
 
-table_orig = get_contents("d:\\data\\1.txt")
-table_select = get_contents("d:\\data\\2.txt")
+table_orig = get_contents("C:\\drugmap\\DrugMaster.txt")
+table_select = get_contents("C:\\drugmap\\DimDrugMaster.txt")
 table1 = []
 for rec1 in table_orig :
     if rec1['DrugMaster_ID'] == '673738' or rec1['DrugMaster_ID'] == '672488':
@@ -898,8 +946,8 @@ format_print_matched_array_ignore_empty_horizental_layout(matchresult_to_see_err
 exit()
 
 
-table_orig = get_contents("d:\\data\\1.txt")
-table_select = get_contents("d:\\data\\2.txt")
+table_orig = get_contents("C:\\drugmap\\DrugMaster.txt")
+table_select = get_contents("C:\\drugmap\\DimDrugMaster.txt")
 matchresult = find_match_records_rule1_guess_transform_rule1_strict(table_orig, table_select, 'rule1_with_guess_packsize1_ignore_formcode')
 format_print_matched_array_ignore_empty_horizental_layout(matchresult, 'not-print-zdispense')
 
@@ -908,8 +956,8 @@ exit()
 
 
 
-table_orig = get_contents("d:\\data\\1.txt")
-table_select = get_contents("d:\\data\\2.txt")
+table_orig = get_contents("C:\\drugmap\\DrugMaster.txt")
+table_select = get_contents("C:\\drugmap\\DimDrugMaster.txt")
 matchresult = find_match_records_rule1_strict(table_orig, table_select, 'rule1_strict')
 format_print_matched_array_ignore_empty(matchresult)
 
